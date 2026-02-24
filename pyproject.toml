@@ -12,6 +12,7 @@ requires = [
   "setuptools-scm>=9.2.2",
   "scikit-build-core>=0.11.6",
   "mqt.core~=3.4.1",
+  "z3-solver>=4.8.15",
 ]
 build-backend = "scikit_build_core.build"
 
@@ -55,6 +56,7 @@ dependencies = [
     "qiskit[qasm3-import]>=1.0.0",
     "rustworkx[all]>=0.16.0",
     "typing_extensions>=4.6; python_version < '3.11'",
+    "z3-solver>=4.8.15",
 ]
 dynamic = ["version"]
 

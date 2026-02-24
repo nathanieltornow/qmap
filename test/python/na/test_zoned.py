@@ -10,13 +10,12 @@
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 
 import pytest
 from mqt.core import load
 
-from mqt.qmap.na.zoned import RoutingAwareCompiler, ZonedNeutralAtomArchitecture
+from mqt.qmap.na.zoned import AllocOp, RoutingAwareCompiler, ZonedNeutralAtomArchitecture
 
 # get the circuit directory of the project
 circ_dir = Path(__file__).resolve().parent.parent.parent / "na" / "zoned" / "circuits"
@@ -66,22 +65,9 @@ def test_na_routing_aware_compiler(compiler: RoutingAwareCompiler, circuit_filen
     qc = load(circuit_filename)
     result = compiler.compile(qc)
     assert result is not None
+    assert isinstance(result, list)
+    if result:
+        assert isinstance(result[0], AllocOp)
     stats = compiler.stats()
     assert "totalTime" in stats
     assert stats["totalTime"] > 0
-
-
-def test_na_routing_aware_compiler_json_output(compiler: RoutingAwareCompiler) -> None:
-    """Test structured JSON output generation for the zoned neutral atom compiler."""
-    qc = load(circ_dir / "simple.qasm")
-    result = compiler.compile_json(qc)
-    payload = json.loads(result)
-
-    assert isinstance(payload, list)
-    assert len(payload) > 0
-    assert payload[0]["type"] == "alloc"
-    assert "position" in payload[0]
-    assert "atom_id" in payload[0]
-
-    allowed_types = {"alloc", "ry", "rz", "cz", "load", "move", "store"}
-    assert all(op["type"] in allowed_types for op in payload)

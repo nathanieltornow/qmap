@@ -71,15 +71,6 @@ public:
            const std::vector<Placement>& placement,
            const std::vector<Routing>& routing) const -> NAComputation;
 
-  /**
-   * Serialize a generated NA computation into a structured JSON operation list.
-   * Each operation object has a `type` key and type-specific arguments.
-   * @param code is the neutral atom computation
-   * @return the serialized JSON string
-   */
-  [[nodiscard]] static auto toJsonString(const NAComputation& code)
-      -> std::string;
-
 private:
   /// Append all single-qubit gates of a layer to the code
   auto appendSingleQubitGates(

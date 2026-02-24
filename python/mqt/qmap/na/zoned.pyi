@@ -10,6 +10,44 @@ import enum
 
 import mqt.core.ir
 
+class ZonedProgramOp:
+    """Base class for zoned program operations."""
+
+class AllocOp(ZonedProgramOp):
+    """Allocation operation."""
+
+    atom_id: str
+    position: tuple[float, float]
+
+class RyOp(ZonedProgramOp):
+    """Global RY operation."""
+
+    angle: float
+
+class RzOp(ZonedProgramOp):
+    """Local RZ operation."""
+
+    atom_id: str
+    angle: float
+
+class CzOp(ZonedProgramOp):
+    """Global CZ operation."""
+
+class LoadOp(ZonedProgramOp):
+    """Load operation."""
+
+    atom_ids: list[str]
+
+class MoveOp(ZonedProgramOp):
+    """Move operation."""
+
+    targets: dict[str, tuple[float, float]]
+
+class StoreOp(ZonedProgramOp):
+    """Store operation."""
+
+    atom_ids: list[str]
+
 class ZonedNeutralAtomArchitecture:
     """Class representing a zoned neutral atom architecture."""
 
@@ -121,7 +159,17 @@ class RoutingAgnosticCompiler:
             ValueError: If the string is not a valid JSON string
         """
 
-    def compile(self, qc: mqt.core.ir.QuantumComputation) -> str:
+    def compile(self, qc: mqt.core.ir.QuantumComputation) -> list[ZonedProgramOp]:
+        """Compile a quantum circuit for the zoned neutral atom architecture.
+
+        Args:
+            qc: The quantum circuit
+
+        Returns:
+            The compilation result as a typed list of ZonedProgramOp objects.
+        """
+
+    def compile_naviz(self, qc: mqt.core.ir.QuantumComputation) -> str:
         """Compile a quantum circuit for the zoned neutral atom architecture.
 
         Args:
@@ -129,16 +177,6 @@ class RoutingAgnosticCompiler:
 
         Returns:
             The compilation result as a string in the .naviz format.
-        """
-
-    def compile_json(self, qc: mqt.core.ir.QuantumComputation) -> str:
-        """Compile a quantum circuit for the zoned neutral atom architecture.
-
-        Args:
-            qc: The quantum circuit
-
-        Returns:
-            The compilation result as a structured JSON string.
         """
 
     def stats(self) -> dict[str, float]:
@@ -213,7 +251,17 @@ class RoutingAwareCompiler:
             ValueError: If the string is not a valid JSON string
         """
 
-    def compile(self, qc: mqt.core.ir.QuantumComputation) -> str:
+    def compile(self, qc: mqt.core.ir.QuantumComputation) -> list[ZonedProgramOp]:
+        """Compile a quantum circuit for the zoned neutral atom architecture.
+
+        Args:
+            qc: The quantum circuit
+
+        Returns:
+            The compilation result as a typed list of ZonedProgramOp objects.
+        """
+
+    def compile_naviz(self, qc: mqt.core.ir.QuantumComputation) -> str:
         """Compile a quantum circuit for the zoned neutral atom architecture.
 
         Args:
@@ -221,16 +269,6 @@ class RoutingAwareCompiler:
 
         Returns:
             The compilation result as a string in the .naviz format.
-        """
-
-    def compile_json(self, qc: mqt.core.ir.QuantumComputation) -> str:
-        """Compile a quantum circuit for the zoned neutral atom architecture.
-
-        Args:
-            qc: The quantum circuit
-
-        Returns:
-            The compilation result as a structured JSON string.
         """
 
     def stats(self) -> dict[str, float]:

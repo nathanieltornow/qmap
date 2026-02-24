@@ -16,24 +16,188 @@
 #include "na/zoned/layout_synthesizer/placer/HeuristicPlacer.hpp"
 #include "na/zoned/layout_synthesizer/placer/VertexMatchingPlacer.hpp"
 #include "na/zoned/layout_synthesizer/router/IndependentSetRouter.hpp"
+#include "na/operations/GlobalCZOp.hpp"
+#include "na/operations/GlobalRYOp.hpp"
+#include "na/operations/LoadOp.hpp"
+#include "na/operations/LocalRZOp.hpp"
+#include "na/operations/LocalUOp.hpp"
+#include "na/operations/MoveOp.hpp"
+#include "na/operations/StoreOp.hpp"
 
+#include <array>
+#include <cassert>
 #include <cstddef>
 #include <nanobind/nanobind.h>
+#include <nanobind/stl/array.h>       // NOLINT(misc-include-cleaner)
+#include <nanobind/stl/map.h>         // NOLINT(misc-include-cleaner)
 #include <nanobind/stl/string.h>      // NOLINT(misc-include-cleaner)
 #include <nanobind/stl/string_view.h> // NOLINT(misc-include-cleaner)
+#include <nanobind/stl/vector.h>      // NOLINT(misc-include-cleaner)
 // The header <nlohmann/json.hpp> is used, but clang-tidy confuses it with the
 // wrong forward header <nlohmann/json_fwd.hpp>
 // NOLINTNEXTLINE(misc-include-cleaner)
 #include <nlohmann/json.hpp>
 #include <spdlog/common.h>
+#include <map>
+#include <stdexcept>
 #include <string>
+#include <utility>
+#include <vector>
 
 namespace nb = nanobind;
 using namespace nb::literals;
 
+namespace {
+struct ZonedProgramOp {
+  virtual ~ZonedProgramOp() = default;
+};
+
+struct AllocOp final : ZonedProgramOp {
+  std::string atomId;
+  std::array<double, 2> position;
+};
+
+struct RyOp final : ZonedProgramOp {
+  double angle{};
+};
+
+struct RzOp final : ZonedProgramOp {
+  std::string atomId;
+  double angle{};
+};
+
+struct CzOp final : ZonedProgramOp {};
+
+struct LoadOp final : ZonedProgramOp {
+  std::vector<std::string> atomIds;
+};
+
+struct MoveOp final : ZonedProgramOp {
+  std::map<std::string, std::array<double, 2>> targets;
+};
+
+struct StoreOp final : ZonedProgramOp {
+  std::vector<std::string> atomIds;
+};
+
+auto toPythonTypedOps(const na::NAComputation& code) -> nb::list {
+  nb::list result;
+  const auto& initialLocations = code.getInitialLocations();
+  for (const auto& atomPtr : code.getAtoms()) {
+    const auto* atom = atomPtr.get();
+    const auto locIt = initialLocations.find(atom);
+    if (locIt == initialLocations.end()) {
+      continue;
+    }
+    const auto& loc = locIt->second;
+    AllocOp allocOp;
+    allocOp.atomId = atom->getName();
+    allocOp.position = {loc.x, loc.y};
+    result.append(nb::cast(allocOp));
+  }
+
+  for (const auto& opPtr : code) {
+    const auto& op = *opPtr;
+    if (op.is<na::GlobalRYOp>()) {
+      const auto& ry = op.as<na::GlobalRYOp>();
+      assert(!ry.getParams().empty());
+      RyOp ryOp;
+      ryOp.angle = ry.getParams().front();
+      result.append(nb::cast(ryOp));
+      continue;
+    }
+    if (op.is<na::LocalRZOp>()) {
+      const auto& rz = op.as<na::LocalRZOp>();
+      assert(!rz.getParams().empty());
+      const auto angle = rz.getParams().front();
+      for (const auto* atom : rz.getAtoms()) {
+        RzOp rzOp;
+        rzOp.atomId = atom->getName();
+        rzOp.angle = angle;
+        result.append(nb::cast(rzOp));
+      }
+      continue;
+    }
+    if (op.is<na::GlobalCZOp>()) {
+      result.append(nb::cast(CzOp{}));
+      continue;
+    }
+    if (op.is<na::LoadOp>()) {
+      const auto& load = op.as<na::LoadOp>();
+      std::vector<std::string> atomIds;
+      atomIds.reserve(load.getAtoms().size());
+      for (const auto* atom : load.getAtoms()) {
+        atomIds.emplace_back(atom->getName());
+      }
+      LoadOp loadOp;
+      loadOp.atomIds = std::move(atomIds);
+      result.append(nb::cast(loadOp));
+      continue;
+    }
+    if (op.is<na::MoveOp>()) {
+      const auto& move = op.as<na::MoveOp>();
+      std::map<std::string, std::array<double, 2>> targets;
+      const auto& atoms = move.getAtoms();
+      const auto& locs = move.getTargetLocations();
+      assert(atoms.size() == locs.size());
+      for (size_t i = 0; i < atoms.size(); ++i) {
+        targets.emplace(atoms[i]->getName(),
+                        std::array<double, 2>{locs[i].x, locs[i].y});
+      }
+      MoveOp moveOp;
+      moveOp.targets = std::move(targets);
+      result.append(nb::cast(moveOp));
+      continue;
+    }
+    if (op.is<na::StoreOp>()) {
+      const auto& store = op.as<na::StoreOp>();
+      std::vector<std::string> atomIds;
+      atomIds.reserve(store.getAtoms().size());
+      for (const auto* atom : store.getAtoms()) {
+        atomIds.emplace_back(atom->getName());
+      }
+      StoreOp storeOp;
+      storeOp.atomIds = std::move(atomIds);
+      result.append(nb::cast(storeOp));
+      continue;
+    }
+    if (op.is<na::LocalUOp>()) {
+      throw std::invalid_argument(
+          "Unsupported operation for zoned typed output: local u");
+    }
+    throw std::invalid_argument("Unsupported operation for zoned typed output.");
+  }
+  return result;
+}
+} // namespace
+
 // NOLINTNEXTLINE(misc-use-internal-linkage)
 void registerZoned(nb::module_& m) {
   nb::module_::import_("mqt.core.ir");
+
+  nb::class_<ZonedProgramOp>(m, "ZonedProgramOp",
+                             "Base class for zoned program operations.");
+  nb::class_<AllocOp, ZonedProgramOp>(m, "AllocOp")
+      .def(nb::init<>())
+      .def_rw("atom_id", &AllocOp::atomId)
+      .def_rw("position", &AllocOp::position);
+  nb::class_<RyOp, ZonedProgramOp>(m, "RyOp")
+      .def(nb::init<>())
+      .def_rw("angle", &RyOp::angle);
+  nb::class_<RzOp, ZonedProgramOp>(m, "RzOp")
+      .def(nb::init<>())
+      .def_rw("atom_id", &RzOp::atomId)
+      .def_rw("angle", &RzOp::angle);
+  nb::class_<CzOp, ZonedProgramOp>(m, "CzOp").def(nb::init<>());
+  nb::class_<LoadOp, ZonedProgramOp>(m, "LoadOp")
+      .def(nb::init<>())
+      .def_rw("atom_ids", &LoadOp::atomIds);
+  nb::class_<MoveOp, ZonedProgramOp>(m, "MoveOp")
+      .def(nb::init<>())
+      .def_rw("targets", &MoveOp::targets);
+  nb::class_<StoreOp, ZonedProgramOp>(m, "StoreOp")
+      .def(nb::init<>())
+      .def_rw("atom_ids", &StoreOp::atomIds);
 
   nb::class_<na::zoned::Architecture> architecture(
       m, "ZonedNeutralAtomArchitecture",
@@ -195,6 +359,21 @@ Raises:
   routingAgnosticCompiler.def(
       "compile",
       [](na::zoned::RoutingAgnosticCompiler& self,
+         const qc::QuantumComputation& qc) -> nb::list {
+        return toPythonTypedOps(self.compile(qc));
+      },
+      "qc"_a,
+      R"pb(Compile a quantum circuit for the zoned neutral atom architecture.
+
+Args:
+    qc: The quantum circuit
+
+Returns:
+    The compilation result as a typed list of ZonedProgramOp objects.)pb");
+
+  routingAgnosticCompiler.def(
+      "compile_naviz",
+      [](na::zoned::RoutingAgnosticCompiler& self,
          const qc::QuantumComputation& qc) -> std::string {
         return self.compile(qc).toString();
       },
@@ -206,21 +385,6 @@ Args:
 
 Returns:
     The compilation result as a string in the .naviz format.)pb");
-
-  routingAgnosticCompiler.def(
-      "compile_json",
-      [](na::zoned::RoutingAgnosticCompiler& self,
-         const qc::QuantumComputation& qc) -> std::string {
-        return na::zoned::CodeGenerator::toJsonString(self.compile(qc));
-      },
-      "qc"_a,
-      R"pb(Compile a quantum circuit for the zoned neutral atom architecture.
-
-Args:
-    qc: The quantum circuit
-
-Returns:
-    The compilation result as a structured JSON string.)pb");
 
   routingAgnosticCompiler.def(
       "stats",
@@ -363,6 +527,21 @@ Raises:
   routingAwareCompiler.def(
       "compile",
       [](na::zoned::RoutingAwareCompiler& self,
+         const qc::QuantumComputation& qc) -> nb::list {
+        return toPythonTypedOps(self.compile(qc));
+      },
+      "qc"_a,
+      R"pb(Compile a quantum circuit for the zoned neutral atom architecture.
+
+Args:
+    qc: The quantum circuit
+
+Returns:
+    The compilation result as a typed list of ZonedProgramOp objects.)pb");
+
+  routingAwareCompiler.def(
+      "compile_naviz",
+      [](na::zoned::RoutingAwareCompiler& self,
          const qc::QuantumComputation& qc) -> std::string {
         return self.compile(qc).toString();
       },
@@ -374,21 +553,6 @@ Args:
 
 Returns:
     The compilation result as a string in the .naviz format.)pb");
-
-  routingAwareCompiler.def(
-      "compile_json",
-      [](na::zoned::RoutingAwareCompiler& self,
-         const qc::QuantumComputation& qc) -> std::string {
-        return na::zoned::CodeGenerator::toJsonString(self.compile(qc));
-      },
-      "qc"_a,
-      R"pb(Compile a quantum circuit for the zoned neutral atom architecture.
-
-Args:
-    qc: The quantum circuit
-
-Returns:
-    The compilation result as a structured JSON string.)pb");
 
   routingAwareCompiler.def(
       "stats",

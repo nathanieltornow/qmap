@@ -131,6 +131,16 @@ class RoutingAgnosticCompiler:
             The compilation result as a string in the .naviz format.
         """
 
+    def compile_json(self, qc: mqt.core.ir.QuantumComputation) -> str:
+        """Compile a quantum circuit for the zoned neutral atom architecture.
+
+        Args:
+            qc: The quantum circuit
+
+        Returns:
+            The compilation result as a structured JSON string.
+        """
+
     def stats(self) -> dict[str, float]:
         """Get the statistics of the last compilation as a JSON-style dictionary.
 
@@ -211,6 +221,16 @@ class RoutingAwareCompiler:
 
         Returns:
             The compilation result as a string in the .naviz format.
+        """
+
+    def compile_json(self, qc: mqt.core.ir.QuantumComputation) -> str:
+        """Compile a quantum circuit for the zoned neutral atom architecture.
+
+        Args:
+            qc: The quantum circuit
+
+        Returns:
+            The compilation result as a structured JSON string.
         """
 
     def stats(self) -> dict[str, float]:

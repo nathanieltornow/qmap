@@ -208,6 +208,21 @@ Returns:
     The compilation result as a string in the .naviz format.)pb");
 
   routingAgnosticCompiler.def(
+      "compile_json",
+      [](na::zoned::RoutingAgnosticCompiler& self,
+         const qc::QuantumComputation& qc) -> std::string {
+        return na::zoned::CodeGenerator::toJsonString(self.compile(qc));
+      },
+      "qc"_a,
+      R"pb(Compile a quantum circuit for the zoned neutral atom architecture.
+
+Args:
+    qc: The quantum circuit
+
+Returns:
+    The compilation result as a structured JSON string.)pb");
+
+  routingAgnosticCompiler.def(
       "stats",
       [](const na::zoned::RoutingAgnosticCompiler& self) {
         const auto json = nb::module_::import_("json");
@@ -359,6 +374,21 @@ Args:
 
 Returns:
     The compilation result as a string in the .naviz format.)pb");
+
+  routingAwareCompiler.def(
+      "compile_json",
+      [](na::zoned::RoutingAwareCompiler& self,
+         const qc::QuantumComputation& qc) -> std::string {
+        return na::zoned::CodeGenerator::toJsonString(self.compile(qc));
+      },
+      "qc"_a,
+      R"pb(Compile a quantum circuit for the zoned neutral atom architecture.
+
+Args:
+    qc: The quantum circuit
+
+Returns:
+    The compilation result as a structured JSON string.)pb");
 
   routingAwareCompiler.def(
       "stats",

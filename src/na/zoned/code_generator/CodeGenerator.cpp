@@ -33,6 +33,7 @@
 #include <iterator>
 #include <map>
 #include <nlohmann/json.hpp>
+#include <regex>
 #include <spdlog/spdlog.h>
 #include <sstream>
 #include <string>
@@ -186,6 +187,119 @@ namespace {
          std::views::transform([i = 0UL](const auto& value) mutable {
            return std::pair{i++, value};
          });
+}
+
+[[nodiscard]] auto trim(const std::string& s) -> std::string {
+  const auto begin = s.find_first_not_of(" \t\r");
+  if (begin == std::string::npos) {
+    return {};
+  }
+  const auto end = s.find_last_not_of(" \t\r");
+  return s.substr(begin, end - begin + 1);
+}
+
+[[nodiscard]] auto parseProgramToStructuredJson(const std::string& program)
+    -> nlohmann::json {
+  static const std::regex allocPattern(
+      R"(^atom \((-?\d+(?:\.\d+)?), (-?\d+(?:\.\d+)?)\) (atom\d+)$)");
+  static const std::regex ryPattern(
+      R"(^@\+ ry (-?\d+(?:\.\d+)?) global$)");
+  static const std::regex rzPattern(
+      R"(^@\+ rz (-?\d+(?:\.\d+)?) (atom\d+)$)");
+  static const std::regex czPattern(R"(^@\+ cz .+$)");
+  static const std::regex moveEntryPattern(
+      R"(^\((-?\d+(?:\.\d+)?), (-?\d+(?:\.\d+)?)\) (atom\d+)$)");
+
+  std::vector<std::string> lines;
+  {
+    std::istringstream stream(program);
+    std::string line;
+    while (std::getline(stream, line)) {
+      lines.emplace_back(trim(line));
+    }
+  }
+
+  nlohmann::json ops = nlohmann::json::array();
+  size_t i = 0;
+  while (i < lines.size()) {
+    const auto& line = lines[i];
+    if (line.empty()) {
+      ++i;
+      continue;
+    }
+
+    std::smatch match;
+    if (std::regex_match(line, match, allocPattern)) {
+      ops.emplace_back(nlohmann::json{
+          {"type", "alloc"},
+          {"atom_id", match[3].str()},
+          {"position", {std::stod(match[1].str()), std::stod(match[2].str())}},
+      });
+      ++i;
+      continue;
+    }
+    if (std::regex_match(line, match, ryPattern)) {
+      ops.emplace_back(
+          nlohmann::json{{"type", "ry"}, {"angle", std::stod(match[1].str())}});
+      ++i;
+      continue;
+    }
+    if (std::regex_match(line, match, rzPattern)) {
+      ops.emplace_back(nlohmann::json{{"type", "rz"},
+                                      {"angle", std::stod(match[1].str())},
+                                      {"atom_id", match[2].str()}});
+      ++i;
+      continue;
+    }
+    if (std::regex_match(line, czPattern)) {
+      ops.emplace_back(nlohmann::json{{"type", "cz"}});
+      ++i;
+      continue;
+    }
+    if (line == "@+ load [" || line == "@+ store [") {
+      const auto type = line == "@+ load [" ? "load" : "store";
+      nlohmann::json atoms = nlohmann::json::array();
+      ++i;
+      while (i < lines.size() && lines[i] != "]") {
+        if (!lines[i].empty()) {
+          atoms.emplace_back(lines[i]);
+        }
+        ++i;
+      }
+      if (i >= lines.size()) {
+        throw std::invalid_argument("Malformed naviz program: missing ']'.");
+      }
+      ops.emplace_back(nlohmann::json{{"type", type}, {"atom_ids", atoms}});
+      ++i;
+      continue;
+    }
+    if (line == "@+ move [") {
+      nlohmann::json targets = nlohmann::json::object();
+      ++i;
+      while (i < lines.size() && lines[i] != "]") {
+        if (lines[i].empty()) {
+          ++i;
+          continue;
+        }
+        if (!std::regex_match(lines[i], match, moveEntryPattern)) {
+          throw std::invalid_argument("Malformed naviz move entry: " + lines[i]);
+        }
+        targets[match[3].str()] = {
+            std::stod(match[1].str()), std::stod(match[2].str())};
+        ++i;
+      }
+      if (i >= lines.size()) {
+        throw std::invalid_argument("Malformed naviz program: missing ']'.");
+      }
+      ops.emplace_back(nlohmann::json{{"type", "move"}, {"targets", targets}});
+      ++i;
+      continue;
+    }
+
+    throw std::invalid_argument("Unsupported naviz line for JSON output: " +
+                                line);
+  }
+  return ops;
 }
 } // namespace
 auto CodeGenerator::appendRearrangement(
@@ -1181,5 +1295,9 @@ auto CodeGenerator::generate(
                            atoms, globalZone, code);
   }
   return code;
+}
+
+auto CodeGenerator::toJsonString(const NAComputation& code) -> std::string {
+  return parseProgramToStructuredJson(code.toString()).dump();
 }
 } // namespace na::zoned

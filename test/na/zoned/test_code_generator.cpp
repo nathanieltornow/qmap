@@ -16,6 +16,7 @@
 
 #include <gmock/gmock-matchers.h>
 #include <gtest/gtest.h>
+#include <nlohmann/json.hpp>
 #include <memory>
 #include <utility>
 #include <vector>
@@ -73,6 +74,21 @@ TEST_F(CodeGeneratorGenerateTest, Empty) {
                     std::vector<std::vector<std::vector<qc::Qubit>>>{})
           .toString(),
       "atom (0.000, 0.000) atom0\n");
+}
+TEST_F(CodeGeneratorGenerateTest, EmptyJson) {
+  const auto& slm = *architecture.storageZones.front();
+  const auto code = codeGenerator.generate(
+      std::vector<SingleQubitGateLayer>{},
+      std::vector<std::vector<std::tuple<std::reference_wrapper<const SLM>,
+                                         size_t, size_t>>>{{{slm, 0, 0}}},
+      std::vector<std::vector<std::vector<qc::Qubit>>>{});
+
+  const auto json = nlohmann::json::parse(CodeGenerator::toJsonString(code));
+  ASSERT_TRUE(json.is_array());
+  ASSERT_EQ(json.size(), 1);
+  EXPECT_EQ(json.at(0).at("type"), "alloc");
+  EXPECT_EQ(json.at(0).at("atom_id"), "atom0");
+  EXPECT_EQ(json.at(0).at("position"), nlohmann::json::array({0.0, 0.0}));
 }
 TEST_F(CodeGeneratorGenerateTest, GlobalRYGate) {
   const auto& slm = *architecture.storageZones.front();
@@ -456,6 +472,24 @@ atom (3.000, 57.000) atom1
     atom1
 ]
 )");
+
+  const auto json = nlohmann::json::parse(CodeGenerator::toJsonString(
+      codeGenerator.generate(
+          layers,
+          std::vector<std::vector<std::tuple<std::reference_wrapper<const SLM>,
+                                             size_t, size_t>>>{
+              {{storage, 19, 0}, {storage, 19, 1}},
+              {{entanglementLeft, 0, 0}, {entanglementRight, 0, 0}},
+              {{storage, 19, 0}, {storage, 19, 1}}},
+          std::vector<std::vector<std::vector<qc::Qubit>>>{{{0U, 1U}},
+                                                           {{0U, 1U}}})));
+  ASSERT_TRUE(json.is_array());
+  EXPECT_EQ(json.at(0).at("type"), "alloc");
+  EXPECT_EQ(json.at(1).at("type"), "alloc");
+  EXPECT_EQ(json.at(2).at("type"), "load");
+  EXPECT_EQ(json.at(3).at("type"), "move");
+  EXPECT_EQ(json.at(6).at("type"), "store");
+  EXPECT_EQ(json.at(7).at("type"), "cz");
 }
 TEST_F(CodeGeneratorGenerateTest, Offset) {
   // STORAGE     ...         │ ...         │ ...

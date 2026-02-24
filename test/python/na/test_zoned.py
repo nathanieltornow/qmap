@@ -10,6 +10,7 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
@@ -68,3 +69,19 @@ def test_na_routing_aware_compiler(compiler: RoutingAwareCompiler, circuit_filen
     stats = compiler.stats()
     assert "totalTime" in stats
     assert stats["totalTime"] > 0
+
+
+def test_na_routing_aware_compiler_json_output(compiler: RoutingAwareCompiler) -> None:
+    """Test structured JSON output generation for the zoned neutral atom compiler."""
+    qc = load(circ_dir / "simple.qasm")
+    result = compiler.compile_json(qc)
+    payload = json.loads(result)
+
+    assert isinstance(payload, list)
+    assert len(payload) > 0
+    assert payload[0]["type"] == "alloc"
+    assert "position" in payload[0]
+    assert "atom_id" in payload[0]
+
+    allowed_types = {"alloc", "ry", "rz", "cz", "load", "move", "store"}
+    assert all(op["type"] in allowed_types for op in payload)

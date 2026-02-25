@@ -66,6 +66,13 @@ struct RzOp final : ZonedProgramOp {
   double angle{};
 };
 
+struct U3Op final : ZonedProgramOp {
+  std::string atomId;
+  double theta{};
+  double phi{};
+  double lambda_{};
+};
+
 struct CzOp final : ZonedProgramOp {};
 
 struct LoadOp final : ZonedProgramOp {
@@ -162,8 +169,18 @@ auto toPythonTypedOps(const na::NAComputation& code) -> nb::list {
       continue;
     }
     if (op.is<na::LocalUOp>()) {
-      throw std::invalid_argument(
-          "Unsupported operation for zoned typed output: local u");
+      const auto& u = op.as<na::LocalUOp>();
+      const auto& params = u.getParams();
+      assert(params.size() == 3);
+      for (const auto* atom : u.getAtoms()) {
+        U3Op u3Op;
+        u3Op.atomId = atom->getName();
+        u3Op.theta = params[0];
+        u3Op.phi = params[1];
+        u3Op.lambda_ = params[2];
+        result.append(nb::cast(u3Op));
+      }
+      continue;
     }
     throw std::invalid_argument("Unsupported operation for zoned typed output.");
   }
@@ -188,6 +205,12 @@ void registerZoned(nb::module_& m) {
       .def(nb::init<>())
       .def_rw("atom_id", &RzOp::atomId)
       .def_rw("angle", &RzOp::angle);
+  nb::class_<U3Op, ZonedProgramOp>(m, "U3Op")
+      .def(nb::init<>())
+      .def_rw("atom_id", &U3Op::atomId)
+      .def_rw("theta", &U3Op::theta)
+      .def_rw("phi", &U3Op::phi)
+      .def_rw("lambda_", &U3Op::lambda_);
   nb::class_<CzOp, ZonedProgramOp>(m, "CzOp").def(nb::init<>());
   nb::class_<LoadOp, ZonedProgramOp>(m, "LoadOp")
       .def(nb::init<>())

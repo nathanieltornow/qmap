@@ -30,6 +30,14 @@ class RzOp(ZonedProgramOp):
     atom_id: str
     angle: float
 
+class U3Op(ZonedProgramOp):
+    """Local U3 operation."""
+
+    atom_id: str
+    theta: float
+    phi: float
+    lambda_: float
+
 class CzOp(ZonedProgramOp):
     """Global CZ operation."""
 
